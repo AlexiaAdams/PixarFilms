@@ -1,0 +1,667 @@
+<html>
+
+<head>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+
+  <style>
+    .gridlines .domain {
+      display: none;
+    }
+
+    .gridlines line {
+      stroke: #aaa;
+      stroke-dasharray: 3, 3;
+    }
+
+    .gridlinesY .domain {
+      display: none;
+    }
+
+    .gridlinesY line {
+      display: none;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 1%;
+    }
+
+    h2,
+    h3 {
+      margin-top: 0;
+    }
+
+    .row {
+      display: flex;
+      flex-direction: row;
+    }
+
+    .centering {
+      margin-left: 25%;
+      margin-right: 25%;
+    }
+
+    .centering h3 {
+      text-align: center;
+    }
+
+    .center-text {
+      margin-left: 33%;
+      margin-right: 33%;
+      text-align: center;
+      margin-bottom: 1%;
+    }
+
+    ul {
+      list-style-type: none;
+      padding-left: 0;
+      margin: auto;
+    }
+
+    .ops li {
+      width: 200px;
+      text-align: center;
+      cursor: pointer;
+      margin-bottom: 4%;
+      border: 1px solid black;
+      padding-left: 3%;
+      padding-right: 3%;
+      border-radius: 10px;
+    }
+
+    .selectedOp {
+      background-color: #5c5cf1;
+      color: white
+    }
+
+    .button-segment {
+      margin-left: 5%;
+    }
+
+    .charts {
+      margin-left: 15%;
+    }
+  </style>
+
+</head>
+
+<body>
+
+  <h1>
+    Pixar Film Rankings
+  </h1>
+
+  <div class="center-text">
+    Pixar films scores from review-aggregation platforms (Rotten Tomatoes and Metacritic) and scores from the Critics'
+    Choice Movie Awards.
+  </div>
+
+  <div>
+    <!-- Changing X-axis variables -->
+    <div class="centering">
+      <h3>Choose your rating:</h3>
+      <ul class="ops row">
+        <li id="tomato" class="selectedOp">Rotten Tomatoes</li>
+        <li id="meta">Metacritic</li>
+        <li id="critic">Critics Choice</li>
+      </ul>
+    </div>
+
+    <!-- Sorting Films -->
+    <div class="row button-segment">
+      <h3>Sort Order By:</h3>
+      <ul class="ops row">
+        <li id="year" class="selectedOp">Year</li>
+        <li id="rate">Rating</li>
+      </ul>
+      <h3>Show Franchises?</h3>
+      <ul class="ops row">
+        <li id="yGroup">Yes</li>
+        <li id="nGroup" class="selectedOp">No</li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="row charts">
+    <svg id="pop" width="700" height="800"></svg>
+    <svg id="legend" width="300" height="800"></svg>
+
+  </div>
+
+  <script>
+    const svg = d3.select("#pop");
+    const width = svg.attr("width");
+    const height = svg.attr("height");
+    const margin = { top: 50, right: 20, bottom: 10, left: 150 };
+    const chartWidth = width - margin.left - margin.right;
+    const chartHeight = height - margin.top - margin.bottom;
+    const popChart = svg.append("g")
+      .attr("id", "popChart")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+    const legend = d3.select("#legend");
+    const width2 = legend.attr("width")
+    const height2 = legend.attr("height")
+    const legMargin = { top: 10, right: 10, bottom: 10, left: 10 }
+    const legendWidth = width2 - legMargin.left - legMargin.right
+    const legendHeight = height2 - legMargin.top - legMargin.bottom
+    const legendChart = legend.append("g")
+      .attr("id", "legendChart")
+      .attr("transform", `translate(${legMargin.left},${legMargin.top})`)
+
+    const requestData = async function () {
+      var films = await d3.csv("pixar_films.csv");
+      var ratings = await d3.csv("public_response.csv");
+
+      // Films up to Soul -> other films do not have rating info
+      films = films.filter((d) => {
+        return d["number"] <= 23
+      })
+
+      ratings.forEach((d) => {
+        // Make sure ratings are numeric
+        // Rotten tomatoes
+        if (d["rotten_tomatoes"] === "NA") {
+          d["rotten_tomatoes"] = 0
+        }
+        else {
+          d["rotten_tomatoes"] = Number(d["rotten_tomatoes"])
+        }
+        // Metacritic
+        if (d["metacritic"] === "NA") {
+          d["metacritic"] = 0
+        }
+        else {
+          d["metacritic"] = Number(d["metacritic"])
+        }
+        // Critics choice
+        if (d["critics_choice"] === "NA") {
+          d["critics_choice"] = 0
+        }
+        else {
+          d["critics_choice"] = Number(d["critics_choice"])
+        }
+      })
+
+      ratings = ratings.filter((d) => {
+        return d["film"] != "Luca"
+      })
+
+      films.forEach((d) => {
+        // Create a release year variable
+        var yearFormat = d3.timeFormat("%Y");
+        var dateParser = d3.timeParse("%Y-%m-%d");
+        d["year"] = Number(yearFormat(dateParser(d["release_date"])));
+
+        // Ensure runtime is numeric
+        d["run_time"] = Number(d["run_time"]);
+        // Ensure order number is numeric
+        d["number"] = Number(d["number"]);
+
+        // Ratings
+        d["rotten_tomatoes"] = ratings[d["number"] - 1]["rotten_tomatoes"]
+        d["metacritic"] = ratings[d["number"] - 1]["metacritic"]
+        d["critics_choice"] = ratings[d["number"] - 1]["critics_choice"]
+      })
+
+
+      // Franchises
+      let toyGroup = ["Toy Story", "Toy Story 2", "Toy Story 3", "Toy Story 4"]
+      let monstersGroup = ["Monsters, Inc.", "Monsters University"]
+      let carsGroup = ["Cars", "Cars 2", "Cars 3"]
+      let incrediblesGroup = ["The Incredibles", "Incredibles 2"]
+      let fishGroup = ["Finding Nemo", "Finding Dory"]
+      // all else stand-alone
+
+      movies = []
+      filmNames = []
+
+      films.forEach((d) => {
+        // Collect all film names
+        movies.push(d["film"])
+        d["name"] = d["film"] + " [" + d["year"] + "]"
+        filmNames.push(d["name"])
+      })
+
+      // --- Important Variables ---
+      xVar = "rotten_tomatoes"
+      sortType = "year"
+      groupingON = false
+
+      // ---------- Lollipop Chart ----------
+
+      let annotations = svg.append("g").attr("id", "annotations");
+
+      // --- X Axis ---
+
+      function updatePop() {
+        d3.selectAll("text.remove").remove()
+        d3.selectAll("g.remove").remove()
+        d3.selectAll("line.remove").remove()
+
+        ratingScale = d3.scaleLinear()
+          .domain([0, 100])
+          .range([0, chartWidth])
+
+        let topAxis = d3.axisTop(ratingScale);
+        let topGridlines = d3.axisTop(ratingScale)
+          .tickSize(-chartWidth - margin.top)
+          .tickFormat("");
+
+        annotations.append("g")
+          .attr("class", "x axis remove")
+          .attr("transform",
+            `translate(${margin.left},${margin.top + 10})`
+          )
+          .call(topAxis)
+
+        annotations.append("g")
+          .attr("class", "x gridlines remove")
+          .attr("transform",
+            `translate(${margin.left},${margin.top + 10})`
+          )
+          .lower()
+          .call(topGridlines);
+
+        annotations.append("text")
+          .attr("class", "x-label remove")
+          .attr("transform", `translate(${chartWidth / 2 + margin.left}, ${margin.top / 2})`)
+          .style("text-anchor", "middle")
+          .text(xAxisLabeling)
+          .attr("fill", "black")
+          .style("font-family", "monospace")
+          .style("font-weight", "bold");
+
+        function xAxisLabeling() {
+          if (xVar === "rotten_tomatoes") {
+            return "Average Rotten Tomatoes Scores"
+          }
+          if (xVar === "metacritic") {
+            return "Average Metacritic Scores"
+          }
+          // otherwise it is critic choice
+          return "Average Critic Choice Scores"
+        }
+
+        if (sortType == "year") {
+          films = d3.sort(films, (a, b) => d3.ascending(a.number, b.number))
+        }
+        if (sortType == "rate") {
+          films = d3.sort(films, (a, b) => d3.descending(a[xVar], b[xVar]))
+        }
+
+        // need to redo film names
+        filmNames = []
+
+        films.forEach((d) => {
+          // Collect all film names
+          filmNames.push(d["name"])
+        })
+
+        // --- Y Axis ---
+        let filmScale = d3.scaleBand()
+          .domain(filmNames)
+          .range([0, chartHeight - margin.left]);
+
+        let leftAxis = d3.axisLeft(filmScale);
+        let leftGridlines = d3.axisLeft(filmScale)
+          .tickSize(-chartWidth - margin.right)
+          .tickFormat("");
+
+        annotations.append("g")
+          .attr("class", "y axis remove")
+          .attr("transform",
+            `translate(${margin.left},${margin.top + 10})`
+          )
+          .call(leftAxis)
+
+        annotations.append("g")
+          .attr("class", "y gridlinesY remove")
+          .attr("transform",
+            `translate(${margin.left},${margin.top + 10})`
+          )
+          .lower()
+          .call(leftGridlines);
+
+
+        // --- Creating Lines ---
+
+        popChart.selectAll("line")
+          .data(films)
+          .join("line")
+          .attr("class", "line")
+          .attr("y1", d => filmScale(d["name"]) + margin.bottom + (filmScale.bandwidth() / 2))
+          .attr("y2", d => filmScale(d["name"]) + margin.bottom + (filmScale.bandwidth() / 2))
+          .attr("x1", d => ratingScale(0))
+          .attr("x2", d => ratingScale(d[xVar]))
+          .attr("stroke", d => {
+            if (groupingON) {
+              return groupLineColors(d["film"])
+            } else {
+              return "black"
+            }
+          })
+          .attr("stroke-width", 3)
+
+        function groupLineColors(film) {
+          if (toyGroup.indexOf(film) !== -1) {
+            return "brown"
+          }
+          if (monstersGroup.indexOf(film) !== -1) {
+            return "green"
+          }
+          if (carsGroup.indexOf(film) !== -1) {
+            return "red"
+          }
+          if (incrediblesGroup.indexOf(film) !== -1) {
+            return "orange"
+          }
+          if (fishGroup.indexOf(film) !== -1) {
+            return "blue"
+          }
+          return "black"
+        }
+
+        // --- Creating circles ---
+
+        const timeExtent = d3.extent(films, (d) => d["run_time"]);
+
+        let colorScale = d3.scaleSequential(d3.interpolatePurples)
+          .domain(timeExtent);
+
+        subFilms = films.filter((d) => {
+          return d[xVar] != 0
+        })
+
+        popChart.selectAll("circle")
+          .data(subFilms)
+          .join("circle")
+          .attr("class", "point")
+          .attr("r", 10)
+          .attr("cy", d => filmScale(d["name"]) + margin.bottom + (filmScale.bandwidth() / 2))
+          .attr("cx", d => ratingScale(d[xVar]))
+          .attr("fill", d => colorScale(d["run_time"]))
+          .attr("stroke", "black")
+          .attr("stoke-width", 1)
+
+        noFilms = films.filter((d) => {
+          return d[xVar] == 0
+        })
+
+        console.log(noFilms)
+
+        popChart.selectAll("text")
+          .data(noFilms)
+          .join("text")
+          .text("N/A")
+          .attr("class", "no-data remove")
+          .attr("y", d => filmScale(d["name"]) + margin.bottom + (filmScale.bandwidth() / 2) + 5)
+          .attr("x", 10)
+          .attr("fill", "black")
+          .style("font-family", "monospace")
+          .style("font-weight", "bold");
+
+        popChart.raise()
+
+        // --- Creating Run Time Legend ---
+        let boxHeight = 300
+        let boxWidth = 50
+
+        let legendScale = d3.scaleLinear()
+          .domain(timeExtent)
+          .range([boxHeight, 0])
+
+        let leftAxisColor = d3.axisLeft(legendScale).ticks(6)
+
+        legend.append("g")
+          .attr("class", "remove")
+          .attr("transform", `translate(${legendWidth / 2 - boxWidth / 4},${legendHeight / 8})`)
+          .call(leftAxisColor)
+
+        let defs = legend.append("defs")
+          .append("linearGradient")
+          .attr("id", "tempGradient")
+          .attr("class", "remove")
+          .attr("x1", "0%")
+          .attr("y1", "100%")
+          .attr("x2", "0%")
+          .attr("y2", "0%");
+
+        defs.selectAll("stop")
+          .data(colorScale.ticks()
+            .map((c, i, n) => (
+              {
+                offset: `${100 * i / n.length}%`,
+                color: colorScale(c)
+              }
+            ))
+          )
+          .join("stop")
+          .attr("offset", d => d.offset)
+          .attr("stop-color", d => d.color);
+
+        legend.append("rect")
+          .attr("id", "legendColorScale")
+          .attr("class", "remove")
+          .attr("x", legendWidth / 2 - boxWidth / 4)
+          .attr("y", legendHeight / 8)
+          .attr("width", boxWidth)
+          .attr("height", boxHeight)
+          .style("stroke", "black")
+          .style("fill", "url(#tempGradient)");
+
+        legend.append("text")
+          .text("Run Time (Minutes)")
+          .attr("class", "remove")
+          .attr("x", legendWidth / 2 - legMargin.right * 5)
+          .attr("y", legendHeight / 8 - legMargin.top)
+          .attr("fill", "black")
+          .style("font-family", "monospace")
+          .style("font-weight", "bold");
+
+        // --- Creating Franchise Legend ---
+        if (groupingON) {
+          legend.append("text")
+            .text("Franchises")
+            .attr("class", "remove")
+            .attr("x", legendWidth / 2 - legMargin.right * 2)
+            .attr("y", boxHeight + legendHeight / 6 + legMargin.top)
+            .attr("fill", "black")
+            .style("font-family", "monospace")
+            .style("font-weight", "bold");
+
+          // Cars Grouping
+          legend.append("line")
+            .attr("class", "remove")
+            .attr("x1", legendWidth / 2)
+            .attr("x2", legendWidth / 2 - legMargin.right * 6)
+            .attr("y1", boxHeight + legendHeight / 6 + 30)
+            .attr("y2", boxHeight + legendHeight / 6 + 30)
+            .attr("stroke", "red")
+            .attr("stroke-width", 3)
+
+          legend.append("text")
+            .text("Cars")
+            .attr("class", "remove")
+            .attr("x", legendWidth / 2 + legMargin.right * 2)
+            .attr("y", boxHeight + legendHeight / 6 + 30 + 5);
+
+          // Monsters Grouping
+          legend.append("line")
+            .attr("class", "remove")
+            .attr("x1", legendWidth / 2)
+            .attr("x2", legendWidth / 2 - legMargin.right * 6)
+            .attr("y1", boxHeight + legendHeight / 6 + 60)
+            .attr("y2", boxHeight + legendHeight / 6 + 60)
+            .attr("stroke", "green")
+            .attr("stroke-width", 3)
+
+          legend.append("text")
+            .text("Monsters")
+            .attr("class", "remove")
+            .attr("x", legendWidth / 2 + legMargin.right * 2)
+            .attr("y", boxHeight + legendHeight / 6 + 60 + 5);
+
+          // Incredibles Grouping
+          legend.append("line")
+            .attr("class", "remove")
+            .attr("x1", legendWidth / 2)
+            .attr("x2", legendWidth / 2 - legMargin.right * 6)
+            .attr("y1", boxHeight + legendHeight / 6 + 90)
+            .attr("y2", boxHeight + legendHeight / 6 + 90)
+            .attr("stroke", "orange")
+            .attr("stroke-width", 3)
+
+          legend.append("text")
+            .text("Incredibles")
+            .attr("class", "remove")
+            .attr("x", legendWidth / 2 + legMargin.right * 2)
+            .attr("y", boxHeight + legendHeight / 6 + 90 + 5);
+
+          // Toy Story Grouping
+          legend.append("line")
+            .attr("class", "remove")
+            .attr("x1", legendWidth / 2)
+            .attr("x2", legendWidth / 2 - legMargin.right * 6)
+            .attr("y1", boxHeight + legendHeight / 6 + 120)
+            .attr("y2", boxHeight + legendHeight / 6 + 120)
+            .attr("stroke", "brown")
+            .attr("stroke-width", 3)
+
+          legend.append("text")
+            .text("Toy Story")
+            .attr("class", "remove")
+            .attr("x", legendWidth / 2 + legMargin.right * 2)
+            .attr("y", boxHeight + legendHeight / 6 + 120 + 5);
+
+          // Finding Nemo Grouping
+          legend.append("line")
+            .attr("class", "remove")
+            .attr("x1", legendWidth / 2)
+            .attr("x2", legendWidth / 2 - legMargin.right * 6)
+            .attr("y1", boxHeight + legendHeight / 6 + 150)
+            .attr("y2", boxHeight + legendHeight / 6 + 150)
+            .attr("stroke", "blue")
+            .attr("stroke-width", 3)
+
+          legend.append("text")
+            .text("Finding Nemo")
+            .attr("class", "remove")
+            .attr("x", legendWidth / 2 + legMargin.right * 2)
+            .attr("y", boxHeight + legendHeight / 6 + 150 + 5);
+
+          // Stand-Alone Grouping
+          legend.append("line")
+            .attr("class", "remove")
+            .attr("x1", legendWidth / 2)
+            .attr("x2", legendWidth / 2 - legMargin.right * 6)
+            .attr("y1", boxHeight + legendHeight / 6 + 180)
+            .attr("y2", boxHeight + legendHeight / 6 + 180)
+            .attr("stroke", "black")
+            .attr("stroke-width", 3)
+
+          legend.append("text")
+            .text("Stand Alone")
+            .attr("class", "remove")
+            .attr("x", legendWidth / 2 + legMargin.right * 2)
+            .attr("y", boxHeight + legendHeight / 6 + 180 + 5);
+        }
+
+      }
+      updatePop()
+
+
+      // Buttons to change x-axis
+      let tomato = d3.select("#tomato")
+      let meta = d3.select("#meta")
+      let critic = d3.select("#critic")
+
+      tomato.on("click", function () {
+        if (tomato.classed("selectedOp", false)) {
+          tomato.classed("selectedOp", true)
+          meta.classed("selectedOp", false)
+          critic.classed("selectedOp", false)
+
+          xVar = "rotten_tomatoes"
+          updatePop()
+        }
+      })
+
+      meta.on("click", function () {
+        if (meta.classed("selectedOp", false)) {
+          meta.classed("selectedOp", true)
+          tomato.classed("selectedOp", false)
+          critic.classed("selectedOp", false)
+
+          xVar = "metacritic"
+          updatePop()
+        }
+      })
+
+      critic.on("click", function () {
+        if (critic.classed("selectedOp", false)) {
+          critic.classed("selectedOp", true)
+          tomato.classed("selectedOp", false)
+          meta.classed("selectedOp", false)
+
+          xVar = "critics_choice"
+          updatePop()
+        }
+      })
+
+      // Buttons to sort films
+      let year = d3.select("#year")
+      let rate = d3.select("#rate")
+
+      year.on("click", function () {
+        if (year.classed("selectedOp", false)) {
+          year.classed("selectedOp", true)
+          rate.classed("selectedOp", false)
+
+          sortType = "year"
+          updatePop()
+        }
+      })
+      rate.on("click", function () {
+        if (rate.classed("selectedOp", false)) {
+          rate.classed("selectedOp", true)
+          year.classed("selectedOp", false)
+
+          sortType = "rate"
+          updatePop()
+        }
+      })
+
+      // Buttons for franchise groupings
+      let yGroup = d3.select("#yGroup")
+      let nGroup = d3.select("#nGroup")
+
+      yGroup.on("click", function () {
+        if (yGroup.classed("selectedOp", false)) {
+          yGroup.classed("selectedOp", true)
+          nGroup.classed("selectedOp", false)
+
+          groupingON = true
+          updatePop()
+        }
+      })
+      nGroup.on("click", function () {
+        if (nGroup.classed("selectedOp", false)) {
+          nGroup.classed("selectedOp", true)
+          yGroup.classed("selectedOp", false)
+
+          groupingON = false
+          updatePop()
+        }
+      })
+
+
+    }
+
+    requestData()
+
+  </script>
+</body>
+
+</html>
