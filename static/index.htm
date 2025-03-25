@@ -339,7 +339,7 @@
             if (groupingON) {
               return groupLineColors(d["film"])
             } else {
-              return "black"
+              return "grey"
             }
           })
           .attr("stroke-width", 3)
@@ -360,7 +360,7 @@
           if (fishGroup.indexOf(film) !== -1) {
             return "blue"
           }
-          return "black"
+          return "grey"
         }
 
         // --- Creating circles ---
@@ -558,7 +558,7 @@
             .attr("x2", legendWidth / 2 - legMargin.right * 6)
             .attr("y1", boxHeight + legendHeight / 6 + 180)
             .attr("y2", boxHeight + legendHeight / 6 + 180)
-            .attr("stroke", "black")
+            .attr("stroke", "grey")
             .attr("stroke-width", 3)
 
           legend.append("text")
